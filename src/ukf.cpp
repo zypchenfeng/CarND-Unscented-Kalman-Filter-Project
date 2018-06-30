@@ -12,6 +12,23 @@ using std::vector;
  * This is scaffolding, do not modify
  */
 UKF::UKF() {
+
+  // Open NIS data files
+  NISRec_radar_.open( "../output_data/NISRec_radar.txt", ios::out );
+  NISRec_laser_.open( "../output_data/NISRec_laser.txt", ios::out );
+
+  // Check for errors opening the files
+  if( !NISRec_radar_.is_open() )
+  {
+    cout << "Error opening NISRec_radar.txt" << endl;
+    exit(1);
+  }
+
+  if( !NISRec_laser_.is_open() )
+  {
+    cout << "Error opening NISRec_laser.txt" << endl;
+    exit(1);
+  }
   // if this is false, laser measurements will be ignored (except during init)
   use_laser_ = true;
 
@@ -25,10 +42,10 @@ UKF::UKF() {
   P_ = MatrixXd(5, 5);
 
   // Process noise standard deviation longitudinal acceleration in m/s^2
-  std_a_ = 2; // default is 30
+  std_a_ = 30; // default is 30
 
   // Process noise standard deviation yaw acceleration in rad/s^2
-  std_yawdd_ = 0.3; // default is 30
+  std_yawdd_ = 30; // default is 30
 
   //DO NOT MODIFY measurement noise values below these are provided by the sensor manufacturer.
   // Laser measurement noise standard deviation position1 in m
@@ -55,11 +72,9 @@ UKF::UKF() {
   Hint: one or more values initialized above might be wildly off...
   */
   is_initialized_ = false;
-  x_.fill(1);
-  P_.fill(0);
   time_us_ = 0.0;
-  // std_a_ = 1.2;
-  // std_yawdd_ = M_PI/24.;
+  std_a_ = 1.5; //car maximum acceleration is ~6m/s2, so bicycle about 2m/s2
+  std_yawdd_ = 0.5; //for bicycle to turn the direction of pi/4 needs about 3s
 
   n_x_ = 5;
   n_aug_ = 7;
@@ -70,7 +85,10 @@ UKF::UKF() {
   nis_lidar_ = 0.;
 }
 
-UKF::~UKF() {}
+UKF::~UKF() {
+  NISRec_laser_.close();
+  NISRec_radar_.close();
+}
 
 /**
  * @param {MeasurementPackage} meas_package The latest measurement data of
@@ -89,7 +107,7 @@ void UKF::ProcessMeasurement(MeasurementPackage meas_package) {
     if (!is_initialized_) {
       // first measurement
       time_us_ = meas_package.timestamp_;
-      x_ << 1, 1, 1, 1, 0.1;
+      x_<< 1.,1.,1.,1.,0.1 ;
       P_ << 0.15,  0, 0, 0, 0,
              0, 0.15, 0, 0, 0,
              0,    0, 1, 0, 0,
@@ -115,13 +133,12 @@ void UKF::ProcessMeasurement(MeasurementPackage meas_package) {
     float dt = (meas_package.timestamp_ - time_us_) / 1000000.0;	//dt - expressed in seconds
     time_us_ = meas_package.timestamp_;
 
-    Prediction(dt);
-
-    if(meas_package.sensor_type_== MeasurementPackage::RADAR){
-      UpdateRadar(meas_package);
-    }
-    else if(meas_package.sensor_type_== MeasurementPackage::LASER){
-      UpdateLidar(meas_package);
+    if(dt>0.001){
+      Prediction(dt);
+      if(meas_package.sensor_type_== MeasurementPackage::RADAR)
+        UpdateRadar(meas_package);
+      else if(meas_package.sensor_type_== MeasurementPackage::LASER)
+        UpdateLidar(meas_package);
     }
   }
 }
@@ -141,9 +158,6 @@ void UKF::Prediction(double delta_t){
 /*******************************************************************************
  * generate sigma point matrix
  ******************************************************************************/
- // int n_x_ = 5;
- // int n_aug_ = 7;
- // int lambda_ = 3-n_aug_;
   MatrixXd Xsig = MatrixXd(n_x_, 2 * n_x_ + 1);
   MatrixXd A = P_.llt().matrixL();
   lambda_ = 3 - n_x_;
@@ -320,6 +334,7 @@ void UKF::Prediction(double delta_t){
    P_ = P_ - K*S*K.transpose();
    // calculate nis_lidar_
    nis_lidar_ = z_diff.transpose()*S.inverse()*z_diff;
+   NISRec_laser_<<nis_lidar_<<endl;
  }
 
 /**
@@ -341,8 +356,6 @@ void UKF::UpdateRadar(MeasurementPackage meas_package) {
   ******************************************************************************/
   //create matrix for sigma points in measurement space
   int n_z_ = 3;
-  //set vector for weights_
-  // VectorXd weights_ = VectorXd(2*n_aug_+1);
   MatrixXd Zsig = MatrixXd(n_z_, 2 * n_aug_ + 1);
   //transform sigma points into measurement space
   for (int i = 0; i < 2 * n_aug_ + 1; i++) {  //2n+1 simga points
@@ -415,4 +428,5 @@ void UKF::UpdateRadar(MeasurementPackage meas_package) {
 
   // calculate nis_radar_
   nis_radar_ = z_diff.transpose()*S.inverse()*z_diff;
+  NISRec_radar_<<nis_radar_<<endl;
 }
